@@ -21,6 +21,9 @@ pub trait Token<L: Lifetime>: FromResponse {
 
     /// Returns the token lifetime.
     fn lifetime(&self) -> &L;
+
+    /// Returns the ID token (if this is an OpenID Connect token).
+    fn id_token(&self) -> Option<&str>;
 }
 
 /// OAuth 2.0 token lifetimes.

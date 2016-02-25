@@ -16,12 +16,14 @@ pub struct Bearer<L: Lifetime> {
     access_token: String,
     scope: Option<String>,
     lifetime: L,
+    id_token: Option<String>,
 }
 
 impl<L: Lifetime> Token<L> for Bearer<L> {
     fn access_token(&self) -> &str { &self.access_token }
     fn scope(&self) -> Option<&str> { self.scope.as_ref().map(|s| &s[..]) }
     fn lifetime(&self) -> &L { &self.lifetime }
+    fn id_token(&self) -> Option<&str> { self.id_token.as_ref().map(|s| &s[..]) }
 }
 
 impl<'a, L: Lifetime> Into<header::Authorization<header::Bearer>> for &'a Bearer<L> {
@@ -41,11 +43,13 @@ impl<L: Lifetime> Bearer<L> {
 
         let access_token = try!(obj.get_string("access_token"));
         let scope = obj.get_string_option("scope");
+        let id_token = obj.get_string_option("id_token");
 
         Ok(Bearer {
             access_token: access_token.into(),
             scope: scope.map(Into::into),
             lifetime: lifetime,
+            id_token: id_token.map(Into::into),
         })
     }
 }
@@ -76,16 +80,17 @@ impl<'a, L: Lifetime + Serialize + 'a> ser::MapVisitor for SerVisitor<'a, L> {
             1 => serializer.visit_struct_elt("access_token", &self.0.access_token).map(Some),
             2 => serializer.visit_struct_elt("scope", &self.0.scope).map(Some),
             3 => serializer.visit_struct_elt("lifetime", &self.0.lifetime).map(Some),
+            4 => serializer.visit_struct_elt("id_token", &self.0.id_token).map(Some),
             _ => Ok(None),
         }
     }
 
-    fn len(&self) -> Option<usize> { Some(3) }
+    fn len(&self) -> Option<usize> { Some(4) }
 }
 
 impl<L: Lifetime + Deserialize> Deserialize for Bearer<L> {
     fn deserialize<D: Deserializer>(deserializer: &mut D) -> Result<Self, D::Error> {
-        static FIELDS: &'static [&'static str] = &["access_token", "scope", "lifetime"];
+        static FIELDS: &'static [&'static str] = &["access_token", "scope", "lifetime", "id_token"];
         deserializer.visit_struct("Bearer", FIELDS, DeVisitor(PhantomData))
     }
 }
@@ -98,12 +103,14 @@ impl<L: Lifetime + Deserialize> de::Visitor for DeVisitor<L> {
         let mut access_token = None;
         let mut scope = None;
         let mut lifetime = None;
+        let mut id_token = None;
 
         loop {
             match try!(visitor.visit_key()) {
                 Some(Field::AccessToken) => access_token = Some(try!(visitor.visit_value())),
                 Some(Field::Scope) => scope = Some(try!(visitor.visit_value())),
                 Some(Field::Lifetime) => lifetime = Some(try!(visitor.visit_value())),
+                Some(Field::IdToken) => id_token = Some(try!(visitor.visit_value())),
                 None => break,
             }
         }
@@ -123,6 +130,7 @@ impl<L: Lifetime + Deserialize> de::Visitor for DeVisitor<L> {
             access_token: access_token,
             scope: scope,
             lifetime: lifetime,
+            id_token: id_token,
         })
     }
 }
@@ -131,6 +139,7 @@ enum Field {
     AccessToken,
     Scope,
     Lifetime,
+    IdToken,
 }
 
 impl Deserialize for Field {
@@ -148,7 +157,8 @@ impl de::Visitor for FieldVisitor {
             "access_token" => Ok(Field::AccessToken),
             "scope" => Ok(Field::Scope),
             "lifetime" => Ok(Field::Lifetime),
-            _ => Err(de::Error::syntax("expected access_token, scope or lifetime")),
+            "id_token" => Ok(Field::IdToken),
+            _ => Err(de::Error::syntax("expected access_token, scope, lifetime or id_token")),
         }
     }
 }
@@ -180,6 +190,7 @@ mod tests {
                 access_token: String::from("aaaaaaaa"),
                 scope: None,
                 lifetime: Static,
+                id_token: None,
             },
             Bearer::<Static>::from_response(&json).unwrap()
         );
@@ -193,6 +204,7 @@ mod tests {
                 access_token: String::from("aaaaaaaa"),
                 scope: None,
                 lifetime: Static,
+                id_token: None,
             },
             Bearer::<Static>::from_response(&json).unwrap()
         );
@@ -208,6 +220,7 @@ mod tests {
                 access_token: String::from("aaaaaaaa"),
                 scope: Some(String::from("foo")),
                 lifetime: Static,
+                id_token: None,
             },
             Bearer::<Static>::from_response(&json).unwrap()
         );
@@ -266,6 +279,7 @@ mod tests {
             access_token: String::from("foo"),
             scope: Some(String::from("bar")),
             lifetime: Static,
+            id_token: Some(String::from("baz")),
         };
         let serialized = serde_json::to_value(&original);
         let deserialized = serde_json::from_value(serialized).unwrap();
